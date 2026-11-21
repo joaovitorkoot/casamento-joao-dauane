@@ -1,6 +1,39 @@
 const presencial=new URLSearchParams(location.search).get('convite')==='presencial';
 if(presencial){document.getElementById('ceremonyMode').textContent='Salão do Reino das Testemunhas de Jeová';document.getElementById('ceremonyLocation').hidden=false;}
-const pages=[...document.querySelectorAll('[data-page]')],tabs=[...document.querySelectorAll('[data-tab]')];let current=0;
-function go(n){if(n<0||n>=pages.length)return;current=n;pages.forEach((p,i)=>p.hidden=i!==n);tabs.forEach((t,i)=>{t.setAttribute('aria-current',i===n?'page':'false')});document.getElementById('prev').disabled=n===0;document.getElementById('next').disabled=n===pages.length-1;}
-tabs.forEach(t=>t.addEventListener('click',()=>go(Number(t.dataset.tab))));document.getElementById('prev').onclick=()=>go(current-1);document.getElementById('next').onclick=()=>go(current+1);go(0);
+const pages=[...document.querySelectorAll('[data-page]')],tabs=[...document.querySelectorAll('[data-tab]')];
+const pageContainer=document.querySelector('main');
+const transitionStyle=document.createElement('style');
+transitionStyle.textContent='main[data-page-fade]{transition:opacity 100ms ease-in-out}@media(prefers-reduced-motion:reduce){main[data-page-fade]{transition:none}}';
+document.head.appendChild(transitionStyle);
+pageContainer.dataset.pageFade='true';
+let current=0,transitioning=false,pendingPage=null;
+function showPage(n){
+  current=n;
+  pages.forEach((p,i)=>p.hidden=i!==n);
+  tabs.forEach((t,i)=>t.setAttribute('aria-current',i===n?'page':'false'));
+  document.getElementById('prev').disabled=n===0;
+  document.getElementById('next').disabled=n===pages.length-1;
+}
+function go(n,immediate=false){
+  if(n<0||n>=pages.length)return;
+  if(immediate){showPage(n);return;}
+  if(transitioning){pendingPage=n;return;}
+  if(n===current)return;
+  if(window.matchMedia('(prefers-reduced-motion: reduce)').matches){showPage(n);return;}
+  transitioning=true;
+  // Transição completa de 0,20 s: 0,10 s de fade-out + 0,10 s de fade-in.
+  pageContainer.style.opacity='0';
+  setTimeout(()=>{
+    showPage(n);
+    pageContainer.style.opacity='1';
+    setTimeout(()=>{
+      transitioning=false;
+      if(pendingPage!==null){const nextPage=pendingPage;pendingPage=null;go(nextPage);}
+    },100);
+  },100);
+}
+tabs.forEach(t=>t.addEventListener('click',()=>go(Number(t.dataset.tab))));
+document.getElementById('prev').onclick=()=>go(current-1);
+document.getElementById('next').onclick=()=>go(current+1);
+go(0,true);
 document.getElementById('rsvp').addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget,btn=form.querySelector('button'),msg=document.getElementById('rsvpMessage'),nome=document.getElementById('guestName').value.trim(),quantidade=Number(document.getElementById('guestCount').value);if(nome.length<2||nome.length>120||!Number.isInteger(quantidade)||quantidade<1||quantidade>9){msg.textContent='Preencha o nome e a quantidade de pessoas.';return;}btn.disabled=true;msg.textContent='Enviando confirmação...';try{const r=await fetch('https://zvhebfgnhadjoououoqh.supabase.co/rest/v1/confirmacoes',{method:'POST',headers:{'Content-Type':'application/json','apikey':'sb_publishable_9rKsB66h0G5b3zRUQ3YqOQ_UUS9baZZ','Prefer':'return=minimal'},body:JSON.stringify({nome,quantidade,modalidade:presencial?'presencial':'zoom'})});if(!r.ok){let detail='';try{detail=(await r.json()).message||''}catch{}throw Error(detail||'O servidor recusou a confirmação.');}msg.textContent='Presença confirmada! Agradecemos sua resposta. ♡';form.reset();}catch(err){msg.textContent='Não foi possível confirmar: '+err.message;}finally{btn.disabled=false;}});
